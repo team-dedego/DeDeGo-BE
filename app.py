@@ -15,7 +15,9 @@ app = FastAPI(title="DEDEGO(판교어 번역기) API", version="1.0.0")
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://dedego.yuuka.me"
+    "https://dedego.yuuka.me",
+    "https://dedego.vercel.app",
+    "https://dedego.kro.kr"
 ]
 
 app.add_middleware(
