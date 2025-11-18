@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import google.generativeai as genai
+from openai import OpenAI
 import json
 import os
 from typing import List, Literal
@@ -28,8 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-2.5-flash')
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class TranslateRequest(BaseModel):
     text: str
@@ -127,42 +126,51 @@ async def health_check():
 async def translate_text(request: TranslateRequest):
     """
     DEDEGO(판교어 번역) API
-    
+
     - to_pangyo: 일반 한국어 → 판교어
     - to_korean: 판교어 → 일반 한국어
     """
     try:
         if not request.text.strip():
             raise HTTPException(status_code=400, detail="텍스트를 입력해주세요")
-        
+
         prompt = PROMPT_TEMPLATES[request.direction].format(text=request.text)
-        
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
-        
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that responds only in JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7
+        )
+
+        response_text = response.choices[0].message.content.strip()
+
         # Markdown code block 제거
         if response_text.startswith("```json"):
             response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
-        
+
         try:
             result = json.loads(response_text)
         except json.JSONDecodeError as e:
             print(f"JSON 파싱 실패. 응답: {response_text}")
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail=f"LLM 응답을 파싱할 수 없습니다. 다시 시도해주세요."
             )
-        
+
         return TranslateResponse(
             original=request.text,
             translated=result.get("translated", ""),
             direction=request.direction,
             terms=[
-                TermExplanation(**term) 
+                TermExplanation(**term)
                 for term in result.get("terms", [])
             ]
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
